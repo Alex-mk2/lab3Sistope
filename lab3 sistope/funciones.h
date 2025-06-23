@@ -6,8 +6,9 @@
 #include <pthread.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
-//Estructura para crear un proceso//
+//Estructura para crear un proceso
 typedef struct{
     int pid;
     int tiempo_servicio;
@@ -17,13 +18,14 @@ typedef struct{
 }Proceso;
 
 
-//Estructura para mover un nodo (Proceso)//
+//Estructura para mover un nodo (Proceso)
 typedef struct Nodo {
     Proceso* proceso;
     struct Nodo * siguiente;
 } Nodo;
 
-//Estructura para crear cola//
+
+//Estructura para crear cola
 typedef struct{
     Nodo * frente;
     Nodo * final;
@@ -33,7 +35,7 @@ typedef struct{
 }Cola;
 
 
-//Cola para procesar los bloqueados//
+//Cola para procesar los bloqueados
 typedef struct {
     Nodo * frente;
     Nodo * final;
@@ -42,12 +44,22 @@ typedef struct {
 }Bloqueados;
 
 
+//Estructura para las estadisticas
+typedef struct{
+    int num_procesos_ejecutados;
+    double tiempo_ocupado; //Quantum utilizado
+    double tiempo_espera_acum_proc; //Tiempo que lleva esperando el proceso
+    double tiempo_proc_bloqueado; //Tiempo que ha sido bloqueado el proceso
+}Informacion;
+
+
 //Variables globales para su uso correspondiente
 extern Cola * cola_proc;
 extern float quantum;
 extern float probabilidad;
 extern Bloqueados * colaBloqueados;
-
+extern int senal;
+extern Informacion * estadisticas_proc;
 /*Llamado de funciones para que sean ejecutadas a traves del funciones.c*/
 
 
@@ -63,7 +75,7 @@ void leer_archivo(char * archivo);
 //Dom: pid X tiempo_servicio X tiempo_llegada
 //Rec: Proceso(estructura)
 
-int crear_proceso(int pid, int tiempo_servicio, int tiempo_llegada);
+Proceso * crear_proceso(int pid, int tiempo_servicio, int tiempo_llegada);
 
 //Descripcion: Funcion que permite destruir un proceso que ha sido creado
 //Dom: Proceso 
@@ -87,7 +99,7 @@ void * despertar(void * arg);
 //Dom: arg
 //Rec: void
 
-void * iniciar_hebras(void * arg);
+void iniciar_hebras(int num_procesadores);
 
 //Descripcion: Funcion que permite iniciar una cola
 //Dom: void 
@@ -133,5 +145,37 @@ Proceso * quitar_bloqueados(Bloqueados * bloqueados);
 //Rec: void
 
 void * planificador_proc(void * arg);
+
+
+//Descripcion: Funcion que permite destruir una cola
+//Dom: Cola 
+//Rec: void
+
+void destruir_cola(Cola * cola);
+
+//Descripcion: Funcion que permite terminar la ejecucion de una hebra
+//Dom: hebras X num_hebras
+//Rec: void
+
+void finalizar_hebras(pthread_t * hebras, int num_hebras);
+
+//Descripcion: Funcion que permite destruir la cola de bloqueados
+//Dom: Bloqueados
+//Rec: void
+
+void destruir_colaBloqueados(Bloqueados * bloqueados);
+
+//Descripcion: Funcion para mostrar la estadisticas por proceso
+//Dom: num_procesadores X tiempo_ejecucion
+//Rec: void
+
+void mostrar_estadisticas(int num_procesadores, int tiempo_ejecucion);
+
+
+//Descripcion: Funcion que inicia las estadisticas por proceso
+//Dom: num_procesadores
+//Rec: void
+
+void iniciar_estadisticas(int num_procesadores);
 
 #endif 
