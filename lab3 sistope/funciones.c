@@ -390,3 +390,26 @@ void iniciar_estadisticas(int num_procesadores){
     }
 }
 
+//Descripcion: Funcion que permite el parseo de argumentos (no mencionan si es con geto)
+//Dom: argc X argv X archivo X num_proceso X quatum X prob
+//Rec: void
+
+void parseo_argumentos(int argc, char * argv[], char ** archivo, int * num_proceso, float * quantum, float * prob){
+    int i;
+    for(i = 1; i < argc; i++){
+         if (strcmp(argv[i], "--data") == 0 && i + 1 < argc) {
+            *archivo = argv[i + 1];
+            i++;
+        } else if (strcmp(argv[i], "--numproc") == 0 && i + 1 < argc) {
+            *num_proceso = atoi(argv[i + 1]);
+            i++;
+        } else if (strcmp(argv[i], "--quantum") == 0 && i + 1 < argc) {
+            *quantum = atof(argv[i + 1]);
+            i++;
+        } else if (strcmp(argv[i], "--prob") == 0 && i + 1 < argc) {
+            *prob = atof(argv[i + 1]);
+            i++;
+        }
+    }
+}
+

@@ -178,4 +178,11 @@ void mostrar_estadisticas(int num_procesadores, int tiempo_ejecucion);
 
 void iniciar_estadisticas(int num_procesadores);
 
+
+//Descripcion: Funcion que permite el parseo de argumentos (no mencionan si es con geto)
+//Dom: argc X argv X archivo X num_proceso X quatum X prob
+//Rec: void
+
+void parseo_argumentos(int argc, char * argv[], char ** archivo, int * num_proceso, float * quantum, float * prob);
+
 #endif 
