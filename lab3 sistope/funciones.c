@@ -69,10 +69,15 @@ Proceso * desencolar(Cola * cola){
     //Mutex se bloquea el proceso
     pthread_mutex_lock(&cola->mutex);
 
-    while(cola->tamano == 0){
+    while(cola->tamano == 0 && senal){
         //Se realiza la espera
         pthread_cond_wait(&cola->cond, &cola->mutex);
 
+    }
+
+    if(!senal && cola->tamano == 0) {
+        pthread_mutex_unlock(&cola->mutex);
+        return NULL;
     }
 
     Nodo * nuevo = cola->frente;
@@ -193,6 +198,10 @@ void * planificador_proc(void * arg){
     int nucleo = *(int*)arg;
     while(senal){
         Proceso * proceso = desencolar(cola_proc);
+        
+        if(proceso == NULL) {
+            break; 
+        }
 
         int tiempo_ejecucion;
 
@@ -210,7 +219,7 @@ void * planificador_proc(void * arg){
 
 
         //Se toma un valor aleatorio, y en base a eso se toma siempre se cumpla que sea mayor a 0 y menor en probabilidad
-        int valor_aleatorio = (rand() / (double)RAND_MAX);
+        double valor_aleatorio = (rand() / (double)RAND_MAX);
         if(proceso->tiempo_restante > 0 && valor_aleatorio < probabilidad){
             
             //Proceso bloqueado
