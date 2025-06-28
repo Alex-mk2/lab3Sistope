@@ -15,6 +15,9 @@ typedef struct{
     int tiempo_llegada;
     int tiempo_restante;
     int esta_bloqueado; 
+    double tiempo_en_cola;
+    int ejecutado; //Si se ejecuto por primera vez caso o más de una vez
+    double primera_ejecucion;
 }Proceso;
 
 
@@ -50,6 +53,7 @@ typedef struct{
     double tiempo_ocupado; //Quantum utilizado
     double tiempo_espera_acum_proc; //Tiempo que lleva esperando el proceso
     double tiempo_proc_bloqueado; //Tiempo que ha sido bloqueado el proceso
+    int num_procesos_bloqueados; //Cantidad de procesos bloqueados
 }Informacion;
 
 
@@ -60,6 +64,8 @@ extern float probabilidad;
 extern Bloqueados * colaBloqueados;
 extern int senal;
 extern Informacion * estadisticas_proc;
+extern int tiempo_global;
+extern pthread_mutex_t mutex_tiempo;
 /*Llamado de funciones para que sean ejecutadas a traves del funciones.c*/
 
 
@@ -95,11 +101,6 @@ void mutex_cond();
 
 void * despertar(void * arg);
 
-//Descripcion: Funcion para inicializar las hebras
-//Dom: arg
-//Rec: void
-
-void iniciar_hebras(int num_procesadores);
 
 //Descripcion: Funcion que permite iniciar una cola
 //Dom: void 

@@ -38,6 +38,9 @@ void encolar(Proceso * proceso, Cola * cola){
 
     //Se bloquea una vez que obtenga el mutex
     pthread_mutex_lock(&cola->mutex);
+    pthread_mutex_lock(&mutex_tiempo);
+    proceso->tiempo_en_cola = tiempo_global;
+    pthread_mutex_unlock(&mutex_tiempo);
 
     //Se crea un nuevo proceso 
     Nodo * nuevo_p = (Nodo*)malloc(sizeof(Nodo));
@@ -177,8 +180,13 @@ void * despertar(void * arg){
         if(proceso != NULL){
             int tiempo_io = 100 + rand() % 401;
 
-            //Se duerme el SO
+            
+            //Se duerme el SO por el tiempo de i/o
             usleep(tiempo_io * 1000);
+            pthread_mutex_lock(&mutex_tiempo);
+            tiempo_global += tiempo_io;
+            pthread_mutex_unlock(&mutex_tiempo);
+
 
             //Se encola el proceso
             encolar(proceso, cola_proc);
@@ -196,41 +204,70 @@ void * despertar(void * arg){
 
 void * planificador_proc(void * arg){
     int nucleo = *(int*)arg;
+
+    //Esto lo controla una variable global declarada en funciones.h
     while(senal){
         Proceso * proceso = desencolar(cola_proc);
+        int tiempo_ejecucion;
         
+        //Si el proceso esta vacio
         if(proceso == NULL) {
             break; 
         }
 
-        int tiempo_ejecucion;
+        //Si el proceso se ejecuta por primera vez
+        if(proceso->ejecutado == 0){
+            pthread_mutex_lock(&mutex_tiempo);
+            proceso->primera_ejecucion = tiempo_global;
+            double tiempo_espera_inicial = (tiempo_global - proceso->tiempo_llegada);
+            pthread_mutex_unlock(&mutex_tiempo);
+            estadisticas_proc[nucleo].tiempo_espera_acum_proc += tiempo_espera_inicial;
+            proceso->ejecutado = 1;
+        }
 
+        //Se revisa si el tiempo es menor al quatum
         if(proceso-> tiempo_restante < quantum){
             tiempo_ejecucion = proceso->tiempo_restante;
         }else{
             tiempo_ejecucion = quantum;
         }
+
+
+        //Se utiliza mutex para proteger el tiempo de ejecucion
         usleep(1000 * tiempo_ejecucion);
+        pthread_mutex_lock(&mutex_tiempo);
+        tiempo_global += tiempo_ejecucion;
+        pthread_mutex_unlock(&mutex_tiempo);
         proceso->tiempo_restante-= tiempo_ejecucion;
 
-        //Para que sea procesado e imprimido por las estadisticas
+
+        //Para que sea procesado e imprimido por la funcion de estadisticas y manejado por su estructura 
+        //Creado en funciones.h
         estadisticas_proc[nucleo].tiempo_ocupado += tiempo_ejecucion; 
         estadisticas_proc[nucleo].num_procesos_ejecutados++;
-
+        
 
         //Se toma un valor aleatorio, y en base a eso se toma siempre se cumpla que sea mayor a 0 y menor en probabilidad
         double valor_aleatorio = (rand() / (double)RAND_MAX);
         if(proceso->tiempo_restante > 0 && valor_aleatorio < probabilidad){
-            
-            //Proceso bloqueado
+            int tiempo_io = 100 + rand() % 401;
+
+
+            //Se registra el tiempo bloqueado y el numero de procesos bloqueados
+            estadisticas_proc[nucleo].tiempo_proc_bloqueado += tiempo_io; 
+            estadisticas_proc[nucleo].num_procesos_bloqueados++;
             proceso->esta_bloqueado = 1;
+
 
             //Agregar a la cola de bloqueados
             agregar_bloqueados(proceso, colaBloqueados);
 
+
         }else if(proceso->tiempo_restante > 0){
             //Se encola el proceso
             encolar(proceso, cola_proc);
+        
+        
         }else{
             //Si termina su tiempo
             destruir_proceso(proceso);
@@ -268,44 +305,12 @@ Proceso * crear_proceso(int pid, int tiempo_servicio, int tiempo_llegada){
     proceso->tiempo_servicio = tiempo_servicio;
     proceso->tiempo_restante = tiempo_servicio;
     proceso->esta_bloqueado = 0;
+    proceso->tiempo_en_cola = 0.0;
+    proceso->ejecutado = 0;
+    proceso->primera_ejecucion = 0.0;
     return proceso;
 }
 
-//Descripcion: Funcion para inicializar las hebras
-//Dom: arg
-//Rec: void
-
-void iniciar_hebras(int num_procesadores){
-    pthread_t * nucleo = (pthread_t *)malloc(num_procesadores * sizeof(pthread_t));
-    pthread_t hebra_maestra;
-
-    //Se genera la hebra que recibe los resultados
-    int * id_hebras = (int*)malloc(num_procesadores * sizeof(int));
-
-    if(pthread_create(&hebra_maestra, NULL, despertar, colaBloqueados) != 0){
-        printf("Error al crear hebra maestra");
-        exit(EXIT_FAILURE);
-    }
-    int i;
-    //Creacion de hebras trabajadoras
-    for(i = 0; i < num_procesadores; i++){
-        id_hebras[i] = i;
-        if(pthread_create(&nucleo[i], NULL, planificador_proc, &id_hebras[i]) != 0){
-            printf("Error al crear las hebras trabajadoras");
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    //Unir estas hebras (su resultado)
-    for(i = 0; i < num_procesadores;i++){
-        pthread_join(nucleo[i], NULL);
-    }
-    pthread_join(hebra_maestra, NULL);
-
-    free(nucleo);
-    free(id_hebras);
-
-}
 
 //Descripcion: Funcion que permite terminar la ejecucion de una hebra
 //Dom: hebras X num_hebras
@@ -331,23 +336,39 @@ void finalizar_hebras(pthread_t * hebras, int num_hebras){
 //Rec: void
 
 void leer_archivo(char * archivo){
+
     FILE * file = fopen(archivo, "r");
     if(file == NULL){
         printf("Error: No se pudo abrir el archivo %s\n", archivo);
         exit(EXIT_FAILURE);
     }
 
-    int pid, tiempo_servicio, tiempo_llegada;
+    int pid, tiempo_llegada, tiempo_servicio;
+    int ultimo_en_llegar = 0;
+
+
     while(fscanf(file, "%d,%d,%d", &pid, &tiempo_llegada, &tiempo_servicio) == 3){
-        if(tiempo_llegada > 0){
-            usleep(tiempo_llegada * 1000);
+        int diferencia = tiempo_llegada - ultimo_en_llegar;
+        if(diferencia > 0){
+            usleep(diferencia * 1000);
+            pthread_mutex_lock(&mutex_tiempo);
+            tiempo_global+= diferencia;
+            pthread_mutex_unlock(&mutex_tiempo);
         }
-        //Se crea un proceso y se encola
-        Proceso * proceso = crear_proceso(pid,tiempo_servicio, tiempo_llegada);
+
+
+        ultimo_en_llegar = tiempo_llegada;
+        Proceso * proceso = crear_proceso(pid, tiempo_servicio, tiempo_llegada);
+    
+
+        pthread_mutex_lock(&mutex_tiempo);
+        proceso->tiempo_en_cola = tiempo_llegada;
+        pthread_mutex_unlock(&mutex_tiempo);
         encolar(proceso, cola_proc);
     }
     fclose(file);
 }
+
 
 //Descripcion: Funcion que permite destruir la cola de bloqueados
 //Dom: Bloqueados
@@ -371,17 +392,32 @@ void mostrar_estadisticas(int num_procesadores, int tiempo_ejecucion){
     int i;
     for(i = 0; i < num_procesadores;i++){
         printf("\nNucleos en uso %d: ", i);
-        printf("\n Cantidad de procesos ejecutados:%d", estadisticas_proc[i].num_procesos_ejecutados);
+        printf("\nCantidad de procesos ejecutados: %d", estadisticas_proc[i].num_procesos_ejecutados);
+
+
         //Formula de la utilizacion
         double utilizacion = (estadisticas_proc[i].tiempo_ocupado / tiempo_ejecucion) * 100.0;
         printf("\nLa utilizacion es: %f\n", utilizacion);
 
+
+        //Tiempo de espera promedio por proceso
         if(estadisticas_proc[i].num_procesos_ejecutados > 0){
             double tiempo_espera_prom = (estadisticas_proc[i].tiempo_espera_acum_proc / estadisticas_proc[i].num_procesos_ejecutados);
             printf("\nTiempo promedio de espera por proceso: %f\n", tiempo_espera_prom);
         }
+
+
+        //Tiempo de procesos bloqueados
+        if(estadisticas_proc[i].num_procesos_bloqueados > 0) {
+            double tiempo_bloqueo_promedio = estadisticas_proc[i].tiempo_proc_bloqueado / estadisticas_proc[i].num_procesos_bloqueados;
+            printf("Tiempo promedio de bloqueo: %.2f ms\n", tiempo_bloqueo_promedio);
+        } else {
+            printf("Tiempo promedio de bloqueo: 0.00 ms\n");
+        }
     }
 }
+    
+
 
 
 //Descripcion: Funcion que inicia las estadisticas por proceso
@@ -396,6 +432,7 @@ void iniciar_estadisticas(int num_procesadores){
         estadisticas_proc[i].tiempo_ocupado = 0.0;
         estadisticas_proc[i].tiempo_espera_acum_proc = 0.0;
         estadisticas_proc[i].tiempo_proc_bloqueado = 0.0;
+        estadisticas_proc[i].num_procesos_bloqueados = 0;
     }
 }
 
